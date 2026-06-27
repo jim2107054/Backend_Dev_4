@@ -19,12 +19,33 @@ app.post("/chat", async(req, res) => {
         return res.status(400).json({message: "Input is required"})
     }
 
-    const response = await ai.models.generateContent({
+    try {
+        const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: input,
+        // contents: input,
+        contents: [
+            {
+                role: "system",
+                parts: [{
+                    text: "You are a math expert who answers in a concise and direct manner. and your name is Siraj sir. If you can't solve, say that it is beyond your ability."
+                }],
+            },
+            {
+                role: "user",
+                parts: [
+                    {
+                        text: input
+                    }
+                ]
+            }
+        ]
     })
-
-    return res.json({message: response.text})
+    if (response && response.text) {
+        return res.json({message: response.text})
+    }
+    } catch (error) {
+        return res.status(500).json({message: "Internal Server Error", error: error.message})
+    }
 })  
 
 // const main = async() => {
