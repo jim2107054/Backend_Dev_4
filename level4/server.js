@@ -13,14 +13,28 @@ const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
 });
 
-const main = async() => {
+app.post("/chat", async(req, res) => {
+    const { input } = req.body || {}
+    if(!input){
+        return res.status(400).json({message: "Input is required"})
+    }
+
     const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: "hello, what is 2+2. then 0/0",
+        contents: input,
     })
-    console.log(response.text)
-}
-main()
+
+    return res.json({message: response.text})
+})  
+
+// const main = async() => {
+//     const response = await ai.models.generateContent({
+//         model: "gemini-3.5-flash",
+//         contents: "hello, what is 2+2. then 0/0",
+//     })
+//     console.log(response.text)
+// }
+// main()
 
 app.get("/", (req, res) => {
     return res.json({message: "Hello from Level 4!"})
