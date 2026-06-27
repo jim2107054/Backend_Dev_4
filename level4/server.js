@@ -3,6 +3,7 @@ import dotenv from "dotenv"
 import { GoogleGenAI } from "@google/genai"
 dotenv.config({ path: "../.env" })
 import { createAgent, tool } from "langchain";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import * as z from "zod";
 
 
@@ -28,29 +29,60 @@ const getWeather = tool(
 // });
 
 
-//! LangChain
-app.post("/chat", async(req, res)=> {
-    const {input} = req.body || {}
+//! LangChain - one approach
+// app.post("/chat", async(req, res)=> {
+//     const {input} = req.body || {}
 
-    if(!input){
-        return res.status(400).json({message: "Input is required"})
-    }
+//     if(!input){
+//         return res.status(400).json({message: "Input is required"})
+//     }
 
-    try {
-        const agent = createAgent({
-      model: "google-genai:gemini-2.5-flash-lite",
-      tools: [getWeather],
-    });
+//     try {
+//         const agent = createAgent({
+//       model: "google-genai:gemini-2.5-flash-lite",
+//       tools: [getWeather],
+//     });
 
-        const userContent = typeof input === "string" ? input : JSON.stringify(input);
-        const result = await agent.invoke({ messages: [{ role: "user", content: userContent }] });
+//         const userContent = typeof input === "string" ? input : JSON.stringify(input);
+//         const result = await agent.invoke({ messages: [{ role: "user", content: userContent }] });
 
-        const outputMessage = result.response || (result.messages && result.messages[result.messages.length - 1]?.content);
-        console.log(outputMessage); 
+//         const outputMessage = result.response || (result.messages && result.messages[result.messages.length - 1]?.content);
+//         console.log(outputMessage); 
         
-        res.json({ message: outputMessage }) 
+//         res.json({ message: outputMessage }) 
+//     } catch (error) {
+//         return res.status(500).json({message: "Internal Server Error", error: error.message})
+//     }
+// })
+
+//! LangChain -> 2nd approach
+app.post("/chat", async(req, res)=> {
+    try {
+        const {input} = req.body || {}
+        if(!input){
+            return res.status(400).json({message: "Input is required"})
+        }
+
+        const model = new ChatGoogleGenerativeAI({
+            model: "gemini-2.5-flash", 
+            temperature: 1.0,
+            maxRetries: 2,
+        });
+
+        const messages = [
+            [
+                "system",
+                "You are a helpful assistant that translates English to French. Translate the user sentence.then in bangla",
+            ],
+            ["human", input],
+        ];
+        
+        const ai_msg = await model.invoke(messages);
+        console.log(ai_msg);
+        return res.json({ message: ai_msg.content });
+
     } catch (error) {
-        return res.status(500).json({message: "Internal Server Error", error: error.message})
+        return res.status(500).json({message: "Internal server error", error: error.message})
     }
 })
 
