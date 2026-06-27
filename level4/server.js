@@ -69,6 +69,7 @@ app.post("/chat", async(req, res)=> {
             maxRetries: 2,
         });
 
+        // This is know as prompt templating. We use this template to guide the model's behaviour.
         const messages = [
             [
                 "system",
