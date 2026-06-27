@@ -12,8 +12,11 @@
   "type": "module",
   "dependencies": {
     "@google/genai": "^2.10.0",
+    "@langchain/google-genai": "^2.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "nodemon": "^3.1.14"
+    "langchain": "^1.5.2",
+    "nodemon": "^3.1.14",
+    "zod": "^4.4.3"
   }
 }
