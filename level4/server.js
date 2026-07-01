@@ -6,6 +6,7 @@ import { createAgent, tool } from "langchain";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatGroq } from "@langchain/groq";
 import * as z from "zod";
+import { StateSchema, MessagesValue, StateGraph, START, END, Annotation } from "@langchain/langgraph";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -13,171 +14,76 @@ const port = process.env.PORT || 5000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const getWeather = tool((input) => `It's always sunny in ${input.city}!`, {
-  name: "get_weather",
-  description: "Get the weather for a given city",
-  schema: z.object({
-    city: z.string().describe("The city to get the weather for"),
-  }),
-});
+//create the state
+// const State = new StateSchema({
+//   messages: MessagesValue
+// })
 
-//! LangChain with Groq
-const llm = new ChatGroq({
-  model: "openai/gpt-oss-120b",
-  temperature: 0.7,
-  maxTokens: undefined,
-  maxRetries: 2,
-});
+// const mock_llm: GraphNode<typeof State> = (state) => {
+//   return { messages: [{ role: "ai", content: "hello world" }] };
+// };
+// const graph = new StateGraph(State).addNode("mock_llm", mock_llm).addEdge(START, "mock_llm").addEdge("mock_llm", END).compile();
+
+// await graph.invoke({
+//   messages: [{
+//     role: "user",
+//     content: "Hi"
+//   }]
+// })
+
+//! LangGraph using custom "State"
+const State = Annotation.Root({
+      prompt: Annotation,
+      aiMessage: Annotation 
+    })
+
+    const llm = new ChatGroq({
+      apiKey: process.env.GROQ_API_KEY,
+      model: "openai/gpt-oss-120b", // Groq typically uses specific model strings like llama3-8b-8192 or mixtral-8x7b-32768
+    });
+
+    const callLLM = async(state) => {
+    const response = await llm.invoke([
+    {
+      role: "system",
+      content: "you are a assistant and your name is jarvis. You are a language translator, you translate any language into Bangla language. if you don't know the answer then don't give incorrect answer"
+    },
+    {
+      role: "human",
+      content: state.prompt
+    }
+  ])
+    return {
+      aiMessage: response.content,
+    };
+  }
+
+    const graph = new StateGraph(State)
+    .addNode("agent", callLLM)
+    .addEdge("__start__", "agent")
+    .addEdge("agent", "__end__")
+    .compile();
+
 
 app.post("/chat", async (req, res) => {
   try {
-    const { input } = req.body || {};
-    if (!input) {
-      return res.status(400).json({ message: "Input is required!" });
+    const { input } = req.body;
+
+    if(!input){
+      return res.status(400).json({ message: "Input is required" });
     }
-    const messages = [
-      {
-        role: "system",
-        content:
-          "You are a helpful assistant that translates English to French. Translate the user sentence.",
-      },
-      {
-        role: "user",
-        content: input,
-      },
-    ];
 
-    const response = await llm.invoke(messages);
-    // console.log(response);
-    // console.log(response.content);
-    return res.status(200).json({ success: true, response: response.content });
+    const result = await graph.invoke({
+      prompt: input,
+    });
+
+    console.log("result", result.aiMessage);
+    res.json({ result: result});
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal server error!" });
+    console.log(error);
+    return res.status(500).json({ message: "Something went wrong" });
   }
-});
-
-// const ai = new GoogleGenAI({
-//     apiKey: process.env.GEMINI_API_KEY,
-// });
-
-//! LangChain - one approach
-// app.post("/chat", async(req, res)=> {
-//     const {input} = req.body || {}
-
-//     if(!input){
-//         return res.status(400).json({message: "Input is required"})
-//     }
-
-//     try {
-//         const agent = createAgent({
-//       model: "google-genai:gemini-2.5-flash-lite",
-//       tools: [getWeather],
-//     });
-
-//         const userContent = typeof input === "string" ? input : JSON.stringify(input);
-//         const messages = [
-//             {
-//                 role: "system",
-//                 content: "You are a helpful assistant that translates English to French. Translate the user sentence.",
-//             },
-//             {
-//                 role: "user",
-//                 content: userContent,
-//             },
-//         ];
-
-//         const result = await agent.invoke({ messages });
-
-//         console.log("Agent Result:", result);
-//         const lastMessage = result.messages?.[result.messages.length - 1];
-//         const outputMessage = typeof lastMessage?.content === "string"
-//             ? lastMessage.content
-//             : lastMessage?.content?.[0]?.text || "No response generated";
-
-//         console.log("Output Message:", outputMessage);
-
-//         return res.json({ message: outputMessage });
-//     } catch (error) {
-//         return res.status(500).json({message: "Internal Server Error", error: error.message})
-//     }
-// })
-
-//! LangChain -> 2nd approach
-// app.post("/chat", async(req, res)=> {
-//     try {
-//         const {input} = req.body || {}
-//         if(!input){
-//             return res.status(400).json({message: "Input is required"})
-//         }
-
-//         const model = new ChatGoogleGenerativeAI({
-//             model: "gemini-2.5-flash",
-//             temperature: 1.0,
-//             maxRetries: 2,
-//         });
-
-//         // This is know as prompt templating. We use this template to guide the model's behaviour.
-//         const messages = [
-//             [
-//                 "system",
-//                 "You are a helpful assistant that translates English to French. Translate the user sentence.then in bangla",
-//             ],
-//             ["human", input],
-//         ];
-
-//         const ai_msg = await model.invoke(messages);
-//         console.log(ai_msg);
-//         return res.json({ message: ai_msg.content });
-
-//     } catch (error) {
-//         return res.status(500).json({message: "Internal server error", error: error.message})
-//     }
-// })
-
-//! Without langChain
-// app.post("/chat", async(req, res) => {
-//     const { input } = req.body || {}
-//     if(!input){
-//         return res.status(400).json({message: "Input is required"})
-//     }
-
-//     try {
-//         const response = await ai.models.generateContent({
-//         model: "gemini-3.5-flash",
-//         // contents: input,
-//         contents: [
-//             {
-//                 role: "system",
-//                 parts: [{
-//                     text: "You are a math expert who answers in a concise and direct manner. and your name is Siraj sir. If you can't solve, say that it is beyond your ability."
-//                 }],
-//             },
-//             {
-//                 role: "user",
-//                 parts: [
-//                     {
-//                         text: input
-//                     }
-//                 ]
-//             }
-//         ]
-//     })
-//     if (response && response.text) {
-//         return res.json({message: response.text})
-//     }
-//     } catch (error) {
-//         return res.status(500).json({message: "Internal Server Error", error: error.message})
-//     }
-// })
-
-// const main = async() => {
-//     const response = await ai.models.generateContent({
-//         model: "gemini-3.5-flash",
-//         contents: "hello, what is 2+2. then 0/0",
-//     })
-//     console.log(response.text)
-// }
-// main()
+})
 
 app.get("/", (req, res) => {
   return res.json({ message: "Hello from Level 4!" });
