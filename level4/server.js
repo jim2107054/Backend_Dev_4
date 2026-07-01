@@ -5,8 +5,9 @@ dotenv.config({ path: "../.env" });
 import { createAgent, tool } from "langchain";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatGroq } from "@langchain/groq";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 import * as z from "zod";
-import { StateSchema, MessagesValue, StateGraph, START, END, Annotation } from "@langchain/langgraph";
+import { StateSchema, MessagesValue, StateGraph, START, END, Annotation, MessagesAnnotation } from "@langchain/langgraph";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -31,37 +32,36 @@ app.use(express.urlencoded({ extended: true }));
 //   }]
 // })
 
-//! LangGraph using custom "State"
-const State = Annotation.Root({
-      prompt: Annotation,
-      aiMessage: Annotation 
-    })
+//! LangGraph using MessagesAnnotation
 
-    const llm = new ChatGroq({
+const llm = new ChatGroq({
       apiKey: process.env.GROQ_API_KEY,
-      model: "openai/gpt-oss-120b", // Groq typically uses specific model strings like llama3-8b-8192 or mixtral-8x7b-32768
-    });
+      model: "openai/gpt-oss-120b", 
+  });
 
-    const callLLM = async(state) => {
-    const response = await llm.invoke([
+//! Tools 
+const tools = []
+const toolNode = new ToolNode(tools)
+
+const callLLM = async(state) => {
+  const response = await llm.invoke([
     {
       role: "system",
       content: "you are a assistant and your name is jarvis. You are a language translator, you translate any language into Bangla language. if you don't know the answer then don't give incorrect answer"
     },
-    {
-      role: "human",
-      content: state.prompt
-    }
+    ...state.messages
   ])
     return {
-      aiMessage: response.content,
+      messages: [response],
     };
   }
 
-    const graph = new StateGraph(State)
+    const graph = new StateGraph(MessagesAnnotation)
     .addNode("agent", callLLM)
-    .addEdge("__start__", "agent")
-    .addEdge("agent", "__end__")
+    .addEdge(START, "agent")
+    //.addNode("tools", toolNode)
+    //.addEdge("tools", "agent")//"compalsory edge, karon agent theke tools call hote pare" => karon tools a gele,must abr agent a back kora lagbe .baki duita to conditional. jodi tools call kora lage, then tools e jaabe. na hole directly last node e chole jaabe.
+    .addEdge("agent", END)
     .compile();
 
 
@@ -74,11 +74,12 @@ app.post("/chat", async (req, res) => {
     }
 
     const result = await graph.invoke({
-      prompt: input,
+      messages: [{ role: "user", content: input }],
     });
 
-    console.log("result", result.aiMessage);
-    res.json({ result: result});
+    const aiMessage = result.messages[result.messages.length - 1];
+    console.log("result", result);
+    res.json({ messages: result.messages});
   } catch (error) {
     console.log(error);
     return res.status(500).json({ message: "Something went wrong" });
